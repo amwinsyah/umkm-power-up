@@ -6,7 +6,7 @@ from datetime import datetime
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="UMKM Pro System", layout="wide")
 
-# --- INITIALISASI STATE (Agar data tidak hilang saat refresh) ---
+# --- INITIALISASI STATE ---
 if 'keranjang' not in st.session_state:
     st.session_state['keranjang'] = []
 
@@ -42,7 +42,6 @@ if menu == "Kasir (POS)":
     # -- BAGIAN 1: PILIH PELANGGAN --
     col_pel, col_tgl = st.columns(2)
     with col_pel:
-        # Ambil daftar nama pelanggan
         list_pelanggan = ["Umum (Guest)"] + df_pelanggan['Nama Pelanggan'].tolist()
         nama_pembeli = st.selectbox("Pilih Pelanggan", list_pelanggan)
     with col_tgl:
@@ -54,12 +53,10 @@ if menu == "Kasir (POS)":
     col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
     
     with col1:
-        # Filter produk yang stoknya > 0
         produk_tersedia = df_produk[df_produk['Stok'] > 0]['Nama Produk'].tolist()
         pilih_produk = st.selectbox("Pilih Produk", ["-- Pilih --"] + produk_tersedia)
     
     with col2:
-        # Otomatis cari harga berdasarkan produk yang dipilih
         harga_saat_ini = 0
         stok_saat_ini = 0
         modal_saat_ini = 0
@@ -70,19 +67,17 @@ if menu == "Kasir (POS)":
             stok_saat_ini = int(data_prod['Stok'])
             modal_saat_ini = int(data_prod['HPP (Modal)'])
             
-        st.info(f"Harga: Rp {harga_saat_ini:,}")
+        st.metric("Harga Satuan", f"Rp {harga_saat_ini:,}")
     
     with col3:
         qty = st.number_input("Jumlah (Qty)", min_value=1, max_value=stok_saat_ini if stok_saat_ini > 0 else 1, value=1)
     
     with col4:
-        # Tombol Tambah ke Keranjang Sementara
-        if st.button("Tambah Item"):
+        if st.button("Tambah Item", type="primary"):
             if pilih_produk != "-- Pilih --":
                 total_harga = harga_saat_ini * qty
                 total_modal = modal_saat_ini * qty
                 
-                # Simpan ke session state (keranjang sementara)
                 st.session_state['keranjang'].append({
                     'Nama Produk': pilih_produk,
                     'Harga Satuan': harga_saat_ini,
@@ -90,7 +85,7 @@ if menu == "Kasir (POS)":
                     'Subtotal': total_harga,
                     'Total Modal': total_modal
                 })
-                st.success("Masuk keranjang!")
+                st.rerun() # <--- INI YANG DIPERBAIKI
             else:
                 st.warning("Pilih produk dulu!")
 
@@ -99,67 +94,65 @@ if menu == "Kasir (POS)":
     
     if len(st.session_state['keranjang']) > 0:
         df_keranjang = pd.DataFrame(st.session_state['keranjang'])
-        st.table(df_keranjang)
+        st.dataframe(df_keranjang, use_container_width=True)
         
         grand_total = df_keranjang['Subtotal'].sum()
         total_modal_transaksi = df_keranjang['Total Modal'].sum()
-        laba_transaksi = grand_total - total_modal_transaksi
         
         st.subheader(f"Total Tagihan: Rp {grand_total:,.0f}")
         
-        # TOMBOL BAYAR (PROSES TRANSAKSI)
-        if st.button("💰 PROSES PEMBAYARAN", type="primary"):
-            # 1. Simpan ke File Transaksi
-            df_transaksi = load_data(FILE_TRANSAKSI, ['Tanggal', 'Pelanggan', 'Produk', 'Qty', 'Total', 'Modal', 'Laba'])
-            
-            new_transactions = []
-            for item in st.session_state['keranjang']:
-                new_transactions.append({
-                    'Tanggal': tanggal,
-                    'Pelanggan': nama_pembeli,
-                    'Produk': item['Nama Produk'],
-                    'Qty': item['Qty'],
-                    'Total': item['Subtotal'],
-                    'Modal': item['Total Modal'],
-                    'Laba': item['Subtotal'] - item['Total Modal']
-                })
+        c_bayar, c_batal = st.columns([1,4])
+        
+        with c_bayar:
+            if st.button("💰 BAYAR SEKARANG"):
+                # 1. Simpan ke File Transaksi
+                df_transaksi = load_data(FILE_TRANSAKSI, ['Tanggal', 'Pelanggan', 'Produk', 'Qty', 'Total', 'Modal', 'Laba'])
                 
-                # 2. Kurangi Stok di Database Produk
-                idx = df_produk[df_produk['Nama Produk'] == item['Nama Produk']].index[0]
-                df_produk.at[idx, 'Stok'] = df_produk.at[idx, 'Stok'] - item['Qty']
-            
-            # Simpan File Transaksi
-            df_transaksi = pd.concat([df_transaksi, pd.DataFrame(new_transactions)], ignore_index=True)
-            save_data(FILE_TRANSAKSI, df_transaksi)
-            
-            # Simpan Perubahan Stok
-            save_data(FILE_PRODUK, df_produk)
-            
-            # 3. Update Total Belanja Pelanggan (Loyalty)
-            if nama_pembeli != "Umum (Guest)":
-                idx_pel = df_pelanggan[df_pelanggan['Nama Pelanggan'] == nama_pembeli].index[0]
-                df_pelanggan.at[idx_pel, 'Total Belanja'] += grand_total
-                save_data(FILE_PELANGGAN, df_pelanggan)
-            
-            # Reset Keranjang
-            st.session_state['keranjang'] = []
-            st.balloons()
-            st.success("Transaksi Berhasil! Stok telah dikurangi.")
-            st.experimental_rerun()
-            
-        if st.button("Hapus Keranjang"):
-            st.session_state['keranjang'] = []
-            st.experimental_rerun()
+                new_transactions = []
+                for item in st.session_state['keranjang']:
+                    new_transactions.append({
+                        'Tanggal': tanggal,
+                        'Pelanggan': nama_pembeli,
+                        'Produk': item['Nama Produk'],
+                        'Qty': item['Qty'],
+                        'Total': item['Subtotal'],
+                        'Modal': item['Total Modal'],
+                        'Laba': item['Subtotal'] - item['Total Modal']
+                    })
+                    
+                    # 2. Kurangi Stok
+                    idx = df_produk[df_produk['Nama Produk'] == item['Nama Produk']].index[0]
+                    df_produk.at[idx, 'Stok'] = df_produk.at[idx, 'Stok'] - item['Qty']
+                
+                # Simpan File
+                df_transaksi = pd.concat([df_transaksi, pd.DataFrame(new_transactions)], ignore_index=True)
+                save_data(FILE_TRANSAKSI, df_transaksi)
+                save_data(FILE_PRODUK, df_produk)
+                
+                # 3. Update Loyalty
+                if nama_pembeli != "Umum (Guest)":
+                    idx_pel = df_pelanggan[df_pelanggan['Nama Pelanggan'] == nama_pembeli].index[0]
+                    df_pelanggan.at[idx_pel, 'Total Belanja'] += grand_total
+                    save_data(FILE_PELANGGAN, df_pelanggan)
+                
+                # Reset
+                st.session_state['keranjang'] = []
+                st.success("Transaksi Sukses!")
+                st.rerun() # <--- INI YANG DIPERBAIKI
+        
+        with c_batal:
+            if st.button("Hapus Keranjang"):
+                st.session_state['keranjang'] = []
+                st.rerun() # <--- INI YANG DIPERBAIKI
     else:
-        st.info("Keranjang masih kosong.")
+        st.info("Keranjang kosong.")
 
 # ==============================================================================
-# MENU 2: MASTER PRODUK (Sama seperti Tahap 1 tapi diperbaiki)
+# MENU 2: MASTER PRODUK
 # ==============================================================================
 elif menu == "Master Produk":
     st.header("📦 Gudang & Produk")
     
-    # Input Produk Baru
     with st.expander("Tambah Produk Baru / Update Stok"):
         col1, col2 = st.columns(2)
         with col1:
@@ -174,14 +167,11 @@ elif menu == "Master Produk":
             df = load_data(FILE_PRODUK, ['Nama Produk', 'Kategori', 'HPP (Modal)', 'Margin (%)', 'Harga Jual', 'Stok'])
             
             if nama in df['Nama Produk'].values:
-                # Update Stok jika produk sudah ada
                 idx = df[df['Nama Produk'] == nama].index[0]
                 df.at[idx, 'Stok'] += stok
-                # Update harga jika berubah
                 if jual > 0: df.at[idx, 'Harga Jual'] = jual
                 st.success(f"Stok {nama} berhasil ditambahkan!")
             else:
-                # Produk Baru
                 margin = ((jual - hpp)/jual * 100) if jual > 0 else 0
                 new_data = pd.DataFrame({'Nama Produk': [nama], 'Kategori': [kategori], 'HPP (Modal)': [hpp], 'Margin (%)': [margin], 'Harga Jual': [jual], 'Stok': [stok]})
                 df = pd.concat([df, new_data], ignore_index=True)
@@ -189,16 +179,15 @@ elif menu == "Master Produk":
             
             save_data(FILE_PRODUK, df)
 
-    # Tabel Stok
     st.subheader("Stok Saat Ini")
     df = load_data(FILE_PRODUK, ['Nama Produk', 'Kategori', 'HPP (Modal)', 'Margin (%)', 'Harga Jual', 'Stok'])
     st.dataframe(df, use_container_width=True)
 
 # ==============================================================================
-# MENU 3: DATA PELANGGAN (CRM Sederhana)
+# MENU 3: DATA PELANGGAN
 # ==============================================================================
 elif menu == "Data Pelanggan":
-    st.header("👥 Data Pelanggan (CRM)")
+    st.header("👥 Data Pelanggan")
     
     with st.form("input_pelanggan"):
         c1, c2 = st.columns(2)
@@ -212,16 +201,19 @@ elif menu == "Data Pelanggan":
                 new_pel = pd.DataFrame({'Nama Pelanggan': [nama_pel], 'No HP': [hp_pel], 'Total Belanja': [0]})
                 df = pd.concat([df, new_pel], ignore_index=True)
                 save_data(FILE_PELANGGAN, df)
-                st.success("Pelanggan Baru Disimpan!")
+                st.success("Pelanggan Disimpan!")
+                st.rerun() # <--- INI JUGA DIPERBAIKI
             else:
-                st.warning("Nama pelanggan sudah ada.")
+                st.warning("Nama sudah ada.")
     
-    # Tampilkan Top Customer
-    st.subheader("🏆 Top Pelanggan (Sultan)")
+    st.subheader("🏆 Top Pelanggan")
     df = load_data(FILE_PELANGGAN, ['Nama Pelanggan', 'No HP', 'Total Belanja'])
-    # Urutkan berdasarkan belanja terbanyak
-    df_sorted = df.sort_values(by='Total Belanja', ascending=False)
-    st.dataframe(df_sorted, use_container_width=True)
+    st.dataframe(df.sort_values(by='Total Belanja', ascending=False), use_container_width=True)
 
 # ==============================================================================
-# MENU 4: LAP
+# MENU 4: LAPORAN TRANSAKSI
+# ==============================================================================
+elif menu == "Laporan Transaksi":
+    st.header("📜 Riwayat Transaksi")
+    df = load_data(FILE_TRANSAKSI, ['Tanggal', 'Pelanggan', 'Produk', 'Qty', 'Total', 'Modal', 'Laba'])
+    st.dataframe(df.sort_index(ascending=False), use_container_width=True)
