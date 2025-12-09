@@ -4,16 +4,16 @@ import os
 from datetime import datetime
 
 # ==============================================================================
-# 1. KONFIGURASI TAMPILAN (CLEAN & PROFESSIONAL)
+# 1. KONFIGURASI TAMPILAN
 # ==============================================================================
 st.set_page_config(page_title="UMKM POS Pro", layout="wide")
 
-# CSS Kustom untuk Tampilan Modern
+# CSS Kustom untuk Tampilan Modern & Rapi
 st.markdown("""
 <style>
     /* Mengatur Tab agar terlihat seperti Menu Navigasi Atas */
     div[data-testid="stTabs"] button {
-        flex-grow: 1; /* Agar menu rata memenuhi lebar */
+        flex-grow: 1;
         font-size: 16px;
         font-weight: 600;
         padding: 15px;
@@ -66,18 +66,45 @@ def format_rupiah(angka):
     return f"Rp {angka:,.0f}"
 
 # ==============================================================================
-# 3. NAVIGASI UTAMA (MENGGUNAKAN NATIVE TABS)
+# 3. NAVIGASI UTAMA (URUTAN BARU: PELANGGAN DI KIRI)
 # ==============================================================================
-# Ini pengganti menu sebelumnya. Tidak perlu install library tambahan!
-tab_kasir, tab_dashboard, tab_produk, tab_pelanggan = st.tabs([
+tab_pelanggan, tab_kasir, tab_dashboard, tab_produk = st.tabs([
+    "👥 PELANGGAN", 
     "🛒 KASIR (POS)", 
     "📊 DASHBOARD", 
-    "📦 PRODUK", 
-    "👥 PELANGGAN"
+    "📦 PRODUK"
 ])
 
 # ==============================================================================
-# TAB 1: KASIR / POS (Default View)
+# TAB 1: PELANGGAN (Sekarang jadi Default/Pertama)
+# ==============================================================================
+with tab_pelanggan:
+    st.header("👥 Database Pelanggan")
+    df_pel = load_data(FILE_PELANGGAN, ['No HP', 'Nama Pelanggan', 'Total Belanja'])
+    
+    col_kiri, col_kanan = st.columns([1, 2], gap="large")
+    
+    with col_kiri:
+        with st.container(border=True):
+            st.subheader("Tambah Pelanggan")
+            nama = st.text_input("Nama Lengkap")
+            hp = st.text_input("No HP / WhatsApp")
+            if st.button("Simpan Data Pelanggan"):
+                if nama and hp:
+                    if hp in df_pel['No HP'].astype(str).values:
+                        st.error("No HP sudah terdaftar!")
+                    else:
+                        new_p = pd.DataFrame([{'No HP': hp, 'Nama Pelanggan': nama, 'Total Belanja': 0}])
+                        save_data(FILE_PELANGGAN, pd.concat([df_pel, new_p], ignore_index=True))
+                        st.success("Berhasil!")
+                        st.rerun()
+    
+    with col_kanan:
+        st.subheader("Daftar Pelanggan")
+        st.dataframe(df_pel, use_container_width=True)
+
+# ==============================================================================
+# TAB 2: KASIR / POS
 # ==============================================================================
 with tab_kasir:
     # Load Data
@@ -195,7 +222,7 @@ with tab_kasir:
                 st.info("Keranjang kosong.")
 
 # ==============================================================================
-# TAB 2: DASHBOARD
+# TAB 3: DASHBOARD
 # ==============================================================================
 with tab_dashboard:
     st.header("📊 Dashboard Performa")
@@ -228,7 +255,7 @@ with tab_dashboard:
         st.info("Belum ada data transaksi.")
 
 # ==============================================================================
-# TAB 3: MANAJEMEN PRODUK
+# TAB 4: MANAJEMEN PRODUK
 # ==============================================================================
 with tab_produk:
     st.header("📦 Manajemen Produk")
@@ -263,31 +290,3 @@ with tab_produk:
                     st.rerun()
                 else:
                     st.error("Nama produk kosong atau sudah ada.")
-
-# ==============================================================================
-# TAB 4: PELANGGAN
-# ==============================================================================
-with tab_pelanggan:
-    st.header("👥 Database Pelanggan")
-    df_pel = load_data(FILE_PELANGGAN, ['No HP', 'Nama Pelanggan', 'Total Belanja'])
-    
-    col_kiri, col_kanan = st.columns([1, 2], gap="large")
-    
-    with col_kiri:
-        with st.container(border=True):
-            st.subheader("Tambah Pelanggan")
-            nama = st.text_input("Nama Lengkap")
-            hp = st.text_input("No HP / WhatsApp")
-            if st.button("Simpan Data Pelanggan"):
-                if nama and hp:
-                    if hp in df_pel['No HP'].astype(str).values:
-                        st.error("No HP sudah terdaftar!")
-                    else:
-                        new_p = pd.DataFrame([{'No HP': hp, 'Nama Pelanggan': nama, 'Total Belanja': 0}])
-                        save_data(FILE_PELANGGAN, pd.concat([df_pel, new_p], ignore_index=True))
-                        st.success("Berhasil!")
-                        st.rerun()
-    
-    with col_kanan:
-        st.subheader("Daftar Pelanggan")
-        st.dataframe(df_pel, use_container_width=True)
